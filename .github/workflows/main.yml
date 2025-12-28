@@ -1,4 +1,4 @@
-name: RDP Final - Fix Install Error & No Hang
+name: RDP-Larger-Runner
 
 on:
   workflow_dispatch:
@@ -9,100 +9,91 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      - name: Disk Before Cleanup
+      - name: Display System Information
         run: |
-          Write-Host "=== TRƯỚC CLEANUP ==="
-          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}
-          Write-Host "====================`n"
+          Write-Host "=== SYSTEM INFORMATION ==="
+          Get-ComputerInfo | Select-Object CsName, CsNumberOfProcessors, CsNumberOfLogicalProcessors, CsTotalPhysicalMemory, OsArchitecture
+          Write-Host "`nDisk Space:"
+          Get-PSDrive C | Select-Object Name, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Total(GB)";E={[math]::Round(($_.Used+$_.Free)/1GB,2)}}
+          Write-Host "==========================`n"
 
-      - name: Ultimate Cleanup (Free 50-70GB+ - No Hang)
+      - name: Configure Core RDP Settings
         run: |
-          $folders = @(
-            "C:\hostedtoolcache",
-            "C:\Android",
-            "C:\Strawberry",
-            "C:\msys64",
-            "C:\Program Files (x86)\Microsoft Visual Studio",
-            "C:\Program Files\Microsoft SDKs",
-            "C:\ProgramData\chocolatey",
-            "C:\Windows\Temp",
-            "C:\Windows\SoftwareDistribution\Download"
-          )
-          foreach ($f in $folders) {
-            if (Test-Path $f) { Remove-Item $f -Recurse -Force -ErrorAction SilentlyContinue }
-          }
-          Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-          dism /online /cleanup-image /startcomponentcleanup | Out-Null
+          # Enable Remote Desktop and disable NLA for easier connection
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-      - name: Disk After Cleanup
-        run: |
-          Write-Host "=== SAU CLEANUP ==="
-          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}
-          Write-Host "Free tăng mạnh!`n"
-
-      - name: Low Lag Optimization
-        run: |
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f
-          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f
-          powercfg -setactive SCHEME_MIN
-          foreach ($s in "SysMain","DiagTrack","WSearch","MapsBroker") {
-            Stop-Service -Name $s -Force -ErrorAction SilentlyContinue
-            Set-Service -Name $s -StartupType Disabled -ErrorAction SilentlyContinue
-          }
-
-      - name: Enable RDP
-        run: |
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
+          # Remove old rule if exists
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
+          
+          # Allow RDP on port 3389 (only reachable via Tailscale anyway)
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-          Restart-Service TermService -Force
 
-      - name: Create RDP User
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
         run: |
-          $pass = -join ((33..126) | Get-Random -Count 24 | % {[char]$_})
-          $sec = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $sec -AccountNeverExpires -PasswordNeverExpires | Out-Null
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)
+              Lower   = [char[]](97..122)
+              Number  = [char[]](48..57)
+              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
+          }
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+          
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          echo "RDP_PASS=$pass" >> $env:GITHUB_ENV
+          
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Connect Tailscale (Retry Install if Needed)
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:rdp-runner  # Thay bằng tag bạn đã tạo ở bước chuẩn bị
+
+      - name: Get Tailscale IP
         run: |
-          # Nếu Tailscale đã có (từ cache action), skip install
-          if (Test-Path "$env:ProgramFiles\Tailscale\tailscale.exe") {
-            Write-Host "Tailscale đã cài sẵn từ action cache!"
-          } else {
-            # Install thủ công với retry (fix error 1603 thường do network/download)
-            $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
-            $path = "$env:TEMP\tailscale.msi"
-            for ($i=1; $i -le 3; $i++) {
-              try {
-                Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
-                Start-Process msiexec.exe -ArgumentList "/i", "`"$path`"", "/quiet", "/norestart" -Wait
-                if ($LASTEXITCODE -eq 0) { break }
-              } catch { Write-Host "Retry $i failed..." }
-            }
-            Remove-Item $path -Force
+          $tsIP = tailscale ip -4
+          if (-not $tsIP) {
+              Write-Error "Failed to get Tailscale IP"
+              exit 1
           }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $tsIP"
 
-          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=rdp-fast-${{ github.run_id }} --accept-risk=all
-
-          $ip = $null
-          for ($i=0; $i -lt 20; $i++) {
-            $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
-            if ($ip) { break }
-            Start-Sleep -Seconds 6
-          }
-          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
-
-      - name: Final Info & Keep Alive
+      - name: Verify RDP Accessibility
         run: |
-          Write-Host "`n=================================================="
-          Write-Host "       RDP NHANH & ỔN ĐỊNH - FIX HẾT LỖI!        "
-          Write-Host "=================================================="
-          Write-Host "Tailscale IP : $env:TAILSCALE_IP"
-          Write-Host "Username     : RDP"
-          Write-Host "Password     : ${{ env.RDP_PASS }}"
-          Write-Host "Disk Free    : >70GB sau cleanup"
-          Write-Host "=================================================="
-          while ($true) { Write-Host "[$(Get-Date)] Active"; Start-Sleep -Seconds 300 }
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "RDP port 3389 not reachable on Tailscale IP"
+              exit 1
+          }
+          Write-Host "RDP connectivity verified!"
+
+      - name: Maintain Connection
+        run: |
+          Write-Host "`n=== RDP ACCESS READY ==="
+          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
+          Write-Host "Username: RDP"
+          Write-Host "$env:RDP_CREDS"
+          Write-Host "Specs: 4 vCPU | 16GB RAM | ~600GB SSD"
+          Write-Host "OS: Windows Server 2022 (compatible with Windows 11 features)"
+          Write-Host "Connect via Tailscale network using any RDP client"
+          Write-Host "========================================`n"
+          
+          # Keep alive until manually cancelled
+          while ($true) {
+              Write-Host "[$(Get-Date)] Runner active - Cancel workflow to stop"
+              Start-Sleep -Seconds 300
+          }
