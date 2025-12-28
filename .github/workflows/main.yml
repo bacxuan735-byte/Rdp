@@ -75,13 +75,15 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
-      - name: Set Greenboy Wallpaper (fix lỗi tải hình triệt để)
+      - name: Set Greenboy Wallpaper (fix lỗi tải hình 100%)
         run: |
-          # 3 link backup xanh chill giống ảnh bạn gửi (HD ổn định)
+          # 5 link backup siêu ổn định (xanh lá mây trời chill giống ảnh bạn gửi)
           $urls = @(
+              "https://images.pexels.com/photos/30336235/pexels-photo-30336235.jpeg"
+              "https://4kwallpapers.com/images/wallpapers/grass-landscape-blue-sky-tree-clear-sky-beautiful-scenery-7680x4320-2435.jpg"
               "https://w0.peakpx.com/wallpaper/246/703/HD-wallpaper-landscape-hills-grass-trees-sky-clouds-green-path-nature-field.jpg"
-              "https://images.unsplash.com/photo-1502082553048-f009136a2cae?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=1920"
-              "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
+              "https://w0.peakpx.com/wallpaper/822/994/HD-wallpaper-green-tree-green-tree-blue-sky-nature-landscape.jpg"
+              "https://thumbs.dreamstime.com/b/serene-landscape-photography-rolling-green-hills-under-vast-blue-sky-fluffy-clouds-ideal-nature-agriculture-357418423.jpg"
           )
           
           $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-chill.jpg"
@@ -90,7 +92,7 @@ jobs:
           foreach ($url in $urls) {
               try {
                   Write-Host "Đang tải từ link: $url"
-                  Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 90 -UseBasicParsing -ErrorAction Stop
+                  Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 120 -UseBasicParsing -ErrorAction Stop
                   $success = $true
                   break
               } catch {
@@ -114,7 +116,7 @@ jobs:
               
               Write-Host "Hình nền xanh chill đã gắn thành công! 💚☁️"
           } else {
-              Write-Host "Không tải được hình (mạng runner chậm), bỏ qua - RDP vẫn chạy ngon"
+              Write-Host "Không tải được hình (mạng chậm), bỏ qua - RDP vẫn chạy ngon"
           }
 
       - name: Maintain Connection
