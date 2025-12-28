@@ -56,24 +56,16 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
-      - name: Get Tailscale IP (with retry nếu cần)
+      - name: Get Tailscale IP (wait longer for bug)
         run: |
-          $retry = 0
-          $tsIP = $null
-          while ($retry -lt 20 -and -not $tsIP) {
-              $tsIP = tailscale ip -4
-              if ($tsIP) {
-                  echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-                  Write-Host "Tailscale IP: $tsIP"
-              } else {
-                  Start-Sleep -Seconds 10
-                  $retry++
-              }
-          }
+          Start-Sleep -Seconds 30  # Chờ thêm 30s để Tailscale ổn định (fix bug chậm)
+          $tsIP = tailscale ip -4
           if (-not $tsIP) {
               Write-Error "Failed to get Tailscale IP"
               exit 1
           }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $tsIP"
 
       - name: Verify RDP Accessibility
         run: |
@@ -86,11 +78,11 @@ jobs:
 
       - name: Set Greenboy Wallpaper (hình xanh cũ đẹp)
         run: |
-          # Link hình cánh đồng xanh lá mây trời giống cái cũ bạn thích
+          # Hình cánh đồng xanh lá mây trời giống cũ bạn thích (link ổn định HD)
           $url = "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
           $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-old.jpg"
           
-          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath
+          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 300
           
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
