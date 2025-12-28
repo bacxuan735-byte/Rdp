@@ -1,4 +1,4 @@
-name: RDP Final Fix - Không Kẹt Nữa (Free Max Disk & Super Smooth)
+name: RDP Final - Fix Install Error & No Hang
 
 on:
   workflow_dispatch:
@@ -11,16 +11,15 @@ jobs:
     steps:
       - name: Disk Before Cleanup
         run: |
-          Write-Host "=== TRƯỚC KHI CLEANUP ==="
-          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}
-          Write-Host "========================`n"
+          Write-Host "=== TRƯỚC CLEANUP ==="
+          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}
+          Write-Host "====================`n"
 
-      - name: Ultimate Cleanup - Không Kẹt, Không GUI (Free 50-70GB+)
+      - name: Ultimate Cleanup (Free 50-70GB+ - No Hang)
         run: |
-          # Xóa an toàn các folder lớn nhất trên runner (không ảnh hưởng RDP)
           $folders = @(
-            "C:\hostedtoolcache",                 # Lớn nhất ~30-40GB
-            "C:\Android",                         # ~10GB
+            "C:\hostedtoolcache",
+            "C:\Android",
             "C:\Strawberry",
             "C:\msys64",
             "C:\Program Files (x86)\Microsoft Visual Studio",
@@ -29,42 +28,25 @@ jobs:
             "C:\Windows\Temp",
             "C:\Windows\SoftwareDistribution\Download"
           )
-
           foreach ($f in $folders) {
-            if (Test-Path $f) {
-              Write-Host "Đang xóa $f ..."
-              Remove-Item $f -Recurse -Force -ErrorAction SilentlyContinue
-            }
+            if (Test-Path $f) { Remove-Item $f -Recurse -Force -ErrorAction SilentlyContinue }
           }
-
-          # Xóa temp user
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
-
-          # Clear Recycle Bin
           Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-
-          # DISM cleanup (chạy nền, không GUI, không kẹt)
           dism /online /cleanup-image /startcomponentcleanup | Out-Null
-
-          Write-Host "`nUltimate Cleanup xong! Không dùng cleanmgr → 100% không kẹt!"
 
       - name: Disk After Cleanup
         run: |
-          Write-Host "=== SAU KHI CLEANUP ==="
-          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}
-          Write-Host "Free thường tăng lên 70-90GB từ ~31GB ban đầu!`n"
+          Write-Host "=== SAU CLEANUP ==="
+          Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}
+          Write-Host "Free tăng mạnh!`n"
 
-      - name: Super Low Lag & CPU Optimization
+      - name: Low Lag Optimization
         run: |
-          # Tắt hoàn toàn hiệu ứng đồ họa → RDP mượt như máy thật
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f
-          reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f
-          reg add "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek /t REG_DWORD /d 0 /f
-
-          # High performance + tắt service thừa
           powercfg -setactive SCHEME_MIN
-          foreach ($s in "SysMain","DiagTrack","WSearch","MapsBroker","lfsvc") {
+          foreach ($s in "SysMain","DiagTrack","WSearch","MapsBroker") {
             Stop-Service -Name $s -Force -ErrorAction SilentlyContinue
             Set-Service -Name $s -StartupType Disabled -ErrorAction SilentlyContinue
           }
@@ -72,8 +54,6 @@ jobs:
       - name: Enable RDP
         run: |
           reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
-          reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service TermService -Force
 
@@ -81,33 +61,48 @@ jobs:
         run: |
           $pass = -join ((33..126) | Get-Random -Count 24 | % {[char]$_})
           $sec = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $sec -AccountNeverExpires -PasswordNeverExpires -ErrorAction SilentlyContinue | Out-Null
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP" -ErrorAction SilentlyContinue
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP" -ErrorAction SilentlyContinue
+          New-LocalUser -Name "RDP" -Password $sec -AccountNeverExpires -PasswordNeverExpires | Out-Null
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           echo "RDP_PASS=$pass" >> $env:GITHUB_ENV
 
-      - name: Connect Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          hostname: rdp-final-${{ github.run_id }}
+      - name: Connect Tailscale (Retry Install if Needed)
+        run: |
+          # Nếu Tailscale đã có (từ cache action), skip install
+          if (Test-Path "$env:ProgramFiles\Tailscale\tailscale.exe") {
+            Write-Host "Tailscale đã cài sẵn từ action cache!"
+          } else {
+            # Install thủ công với retry (fix error 1603 thường do network/download)
+            $url = "https://pkgs.tailscale.com/stable/tailscale-setup-latest-amd64.msi"
+            $path = "$env:TEMP\tailscale.msi"
+            for ($i=1; $i -le 3; $i++) {
+              try {
+                Invoke-WebRequest -Uri $url -OutFile $path -UseBasicParsing
+                Start-Process msiexec.exe -ArgumentList "/i", "`"$path`"", "/quiet", "/norestart" -Wait
+                if ($LASTEXITCODE -eq 0) { break }
+              } catch { Write-Host "Retry $i failed..." }
+            }
+            Remove-Item $path -Force
+          }
 
-      - name: Get Tailscale IP
-        id: ts
-        run: echo "ip=$(tailscale ip -4)" >> $GITHUB_OUTPUT
+          & "$env:ProgramFiles\Tailscale\tailscale.exe" up --authkey=${{ secrets.TAILSCALE_AUTH_KEY }} --hostname=rdp-fast-${{ github.run_id }} --accept-risk=all
 
-      - name: Final RDP Info & Keep Alive
+          $ip = $null
+          for ($i=0; $i -lt 20; $i++) {
+            $ip = & "$env:ProgramFiles\Tailscale\tailscale.exe" ip -4 2>$null
+            if ($ip) { break }
+            Start-Sleep -Seconds 6
+          }
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+
+      - name: Final Info & Keep Alive
         run: |
           Write-Host "`n=================================================="
-          Write-Host "       RDP HOÀN HẢO - KHÔNG KẸT NỮA!             "
+          Write-Host "       RDP NHANH & ỔN ĐỊNH - FIX HẾT LỖI!        "
           Write-Host "=================================================="
-          Write-Host "Tailscale IP : ${{ steps.ts.outputs.ip }}"
+          Write-Host "Tailscale IP : $env:TAILSCALE_IP"
           Write-Host "Username     : RDP"
           Write-Host "Password     : ${{ env.RDP_PASS }}"
-          Write-Host "Ổ C:         : Free >70GB sau cleanup"
-          Write-Host "Lag          : Siêu thấp (effects tắt hết)"
+          Write-Host "Disk Free    : >70GB sau cleanup"
           Write-Host "=================================================="
-          while ($true) {
-            Write-Host "[$(Get-Date)] RDP Active - Chạy mượt mãi"
-            Start-Sleep -Seconds 300
-          }
+          while ($true) { Write-Host "[$(Get-Date)] Active"; Start-Sleep -Seconds 300 }
