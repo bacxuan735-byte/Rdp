@@ -51,11 +51,12 @@ jobs:
           
           echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Connect to Tailscale (fix bug Windows headless 2025)
+      - name: Connect to Tailscale (fix bug headless Windows 2025)
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          args: --unattended --accept-risk=all  # Fix headless + accept all risk to avoid NeedsLogin
+          args: --unattended --force-reauth --reset --accept-risk=all --accept-dns=false
+          statedir: /tmp/tailscale-state
 
       - name: Get Tailscale IP
         run: |
@@ -80,27 +81,27 @@ jobs:
         run: |
           Write-Host "Đang gắn Brave, Avast và folder giống ảnh bạn chụp..."
 
-          # Brave Browser (latest)
+          # Brave Browser
           Invoke-WebRequest -Uri "https://laptop-updates.brave.com/latest/winx64" -OutFile "$env:TEMP\BraveSetup.exe"
           Start-Process -FilePath "$env:TEMP\BraveSetup.exe" -ArgumentList "/silent", "/install" -Wait
 
-          # Avast Free Antivirus (latest)
+          # Avast Free Antivirus
           Invoke-WebRequest -Uri "https://bits.avast.com/files/installers/avast_free_antivirus_setup_online.exe" -OutFile "$env:TEMP\avast.exe"
           Start-Process -FilePath "$env:TEMP\avast.exe" -ArgumentList "/silent" -Wait
 
-          # Tạo folder trên desktop giống ảnh
+          # Tạo folder trên desktop
           $desktop = [Environment]::GetFolderPath("Desktop")
           New-Item -Path "$desktop\Games" -ItemType Directory -Force
           New-Item -Path "$desktop\Optional" -ItemType Directory -Force
 
-          Write-Host "Gắn xong Brave, Avast, folder Games & Optional – giống hệt ảnh bạn chụp! 💙"
+          Write-Host "Gắn xong Brave, Avast, folder Games & Optional – giống ảnh bạn chụp! 💙"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Gắn xong ứng dụng: Brave, Avast, folder Games & Optional"
+          Write-Host "Gắn xong Brave, Avast, folder Games & Optional"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "Hình nền bạn tự chỉnh thủ công nhé!"
