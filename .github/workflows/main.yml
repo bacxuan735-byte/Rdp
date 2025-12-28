@@ -75,23 +75,38 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
-      - name: Install Roblox
+      - name: Set Windows 11 Blue Wave Wallpaper (giống ảnh bạn gửi)
         run: |
-          Write-Host "Đang cài Roblox để chơi chill..."
-          $robloxUrl = "https://setup.rbxcdn.com/version-0e8d8f0b0f9b4c5a-Roblox.exe"
-          $installerPath = "$env:TEMP\Roblox.exe"
+          # Link wallpaper Windows 11 blue wave chính thức (siêu ổn định, HD)
+          $url = "https://w0.peakpx.com/wallpaper/1002/100/HD-wallpaper-windows-11-blue-stock-official.jpg"
+          $wallpaperPath = "$env:USERPROFILE\Pictures\win11-blue-wave.jpg"
           
-          Invoke-WebRequest -Uri $robloxUrl -OutFile $installerPath -TimeoutSec 300
-          Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait  # Silent install
+          Write-Host "Đang tải wallpaper Windows 11 blue wave đẹp như ảnh bạn gửi..."
+          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 120 -UseBasicParsing
           
-          Write-Host "Roblox đã cài xong! Vào chơi ngay sau khi RDP nhé! 🎮"
+          # Set style Fill (đẹp nhất)
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
+          
+          # Áp dụng hình nền
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Wallpaper {
+              [DllImport("user32.dll", CharSet = CharSet.Auto)]
+              public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+          }
+"@ 
+          [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
+          
+          Write-Host "Wallpaper Windows 11 blue wave đã gắn thành công – giống hệt ảnh bạn gửi! 💙"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Roblox đã gắn sẵn - mở lên chơi luôn! 🎮"
+          Write-Host "Wallpaper: Windows 11 blue wave đẹp chill đã gắn"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "========================================`n"
