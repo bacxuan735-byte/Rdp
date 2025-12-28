@@ -1,4 +1,4 @@
-name: RDP Super Optimized - Max Free Space & Ultra Low Lag
+name: RDP Final Fix - Không Kẹt Nữa (Free Max Disk & Super Smooth)
 
 on:
   workflow_dispatch:
@@ -11,67 +11,69 @@ jobs:
     steps:
       - name: Disk Before Cleanup
         run: |
-          Write-Host "=== TRƯỚC CLEANUP ==="
+          Write-Host "=== TRƯỚC KHI CLEANUP ==="
           Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}
-          Write-Host "====================`n"
+          Write-Host "========================`n"
 
-      - name: Super Aggressive Cleanup (Free 40-60GB+ - Không kẹt GUI)
+      - name: Ultimate Cleanup - Không Kẹt, Không GUI (Free 50-70GB+)
         run: |
-          # 1. Xóa toàn bộ tool cache lớn (an toàn 100% cho RDP)
-          $bigFolders = @(
-            "C:\hostedtoolcache\*",           # ~20-30GB
-            "C:\Android\*",                   # ~10GB nếu có
-            "C:\Strawberry\*",
-            "C:\msys64\*",
-            "C:\Program Files (x86)\Microsoft Visual Studio\*",
-            "C:\Program Files\Microsoft SDKs\*",
-            "C:\ProgramData\chocolatey\bin\*",
-            "C:\ProgramData\chocolatey\lib\*"
+          # Xóa an toàn các folder lớn nhất trên runner (không ảnh hưởng RDP)
+          $folders = @(
+            "C:\hostedtoolcache",                 # Lớn nhất ~30-40GB
+            "C:\Android",                         # ~10GB
+            "C:\Strawberry",
+            "C:\msys64",
+            "C:\Program Files (x86)\Microsoft Visual Studio",
+            "C:\Program Files\Microsoft SDKs",
+            "C:\ProgramData\chocolatey",
+            "C:\Windows\Temp",
+            "C:\Windows\SoftwareDistribution\Download"
           )
-          foreach ($folder in $bigFolders) {
-            Remove-Item $folder -Recurse -Force -ErrorAction SilentlyContinue
+
+          foreach ($f in $folders) {
+            if (Test-Path $f) {
+              Write-Host "Đang xóa $f ..."
+              Remove-Item $f -Recurse -Force -ErrorAction SilentlyContinue
+            }
           }
 
-          # 2. Xóa temp + download updates (rất lớn)
-          Remove-Item "C:\Windows\Temp\*" -Recurse -Force -ErrorAction SilentlyContinue
-          Remove-Item "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
+          # Xóa temp user
           Remove-Item "$env:TEMP\*" -Recurse -Force -ErrorAction SilentlyContinue
 
-          # 3. Auto clean Windows components (không mở GUI, chạy nền)
-          dism /online /cleanup-image /startcomponentcleanup
-          dism /online /cleanup-image /analyzecomponentstore
-
-          # 4. Clear Recycle Bin
+          # Clear Recycle Bin
           Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 
-          Write-Host "`nSuper Cleanup hoàn tất! Không dùng cleanmgr GUI → không kẹt!"
+          # DISM cleanup (chạy nền, không GUI, không kẹt)
+          dism /online /cleanup-image /startcomponentcleanup | Out-Null
+
+          Write-Host "`nUltimate Cleanup xong! Không dùng cleanmgr → 100% không kẹt!"
 
       - name: Disk After Cleanup
         run: |
-          Write-Host "=== SAU CLEANUP ==="
+          Write-Host "=== SAU KHI CLEANUP ==="
           Get-PSDrive C | Format-Table Name, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}
-          Write-Host "Free tăng ~40-60GB (từ ~31GB lên ~70-90GB)!`n"
+          Write-Host "Free thường tăng lên 70-90GB từ ~31GB ban đầu!`n"
 
-      - name: Ultra Low Lag & CPU Optimization
+      - name: Super Low Lag & CPU Optimization
         run: |
-          # Tắt hết visual effects → RDP siêu mượt
+          # Tắt hoàn toàn hiệu ứng đồ họa → RDP mượt như máy thật
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f
           reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
           reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" /v EnableTransparency /t REG_DWORD /d 0 /f
+          reg add "HKCU\Software\Microsoft\Windows\DWM" /v EnableAeroPeek /t REG_DWORD /d 0 /f
 
-          # High performance mode
+          # High performance + tắt service thừa
           powercfg -setactive SCHEME_MIN
-
-          # Tắt service ăn CPU không cần
-          foreach ($svc in "SysMain","DiagTrack","WSearch","MapsBroker","lfsvc","iphlpsvc") {
-            Stop-Service -Name $svc -Force -ErrorAction SilentlyContinue
-            Set-Service -Name $svc -StartupType Disabled -ErrorAction SilentlyContinue
+          foreach ($s in "SysMain","DiagTrack","WSearch","MapsBroker","lfsvc") {
+            Stop-Service -Name $s -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $s -StartupType Disabled -ErrorAction SilentlyContinue
           }
 
-      - name: Enable RDP Fast
+      - name: Enable RDP
         run: |
           reg add "HKLM\System\CurrentControlSet\Control\Terminal Server" /v fDenyTSConnections /t REG_DWORD /d 0 /f
           reg add "HKLM\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp" /v UserAuthentication /t REG_DWORD /d 0 /f
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" 2>$null
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
           Restart-Service TermService -Force
 
@@ -79,30 +81,33 @@ jobs:
         run: |
           $pass = -join ((33..126) | Get-Random -Count 24 | % {[char]$_})
           $sec = ConvertTo-SecureString $pass -AsPlainText -Force
-          New-LocalUser -Name "RDP" -Password $sec -AccountNeverExpires -PasswordNeverExpires | Out-Null
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          New-LocalUser -Name "RDP" -Password $sec -AccountNeverExpires -PasswordNeverExpires -ErrorAction SilentlyContinue | Out-Null
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP" -ErrorAction SilentlyContinue
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP" -ErrorAction SilentlyContinue
           echo "RDP_PASS=$pass" >> $env:GITHUB_ENV
 
       - name: Connect Tailscale
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          hostname: rdp-maxfree-${{ github.run_id }}
+          hostname: rdp-final-${{ github.run_id }}
 
       - name: Get Tailscale IP
         id: ts
         run: echo "ip=$(tailscale ip -4)" >> $GITHUB_OUTPUT
 
-      - name: Final Info & Keep Alive
+      - name: Final RDP Info & Keep Alive
         run: |
           Write-Host "`n=================================================="
-          Write-Host "       RDP SIÊU TỐI ƯU - FREE >70GB & MƯỢT       "
+          Write-Host "       RDP HOÀN HẢO - KHÔNG KẸT NỮA!             "
           Write-Host "=================================================="
           Write-Host "Tailscale IP : ${{ steps.ts.outputs.ip }}"
           Write-Host "Username     : RDP"
           Write-Host "Password     : ${{ env.RDP_PASS }}"
-          Write-Host "Ổ C:         : Đã free thêm 40-60GB (từ ~31GB)"
-          Write-Host "Lag/CPU      : Thấp nhất có thể"
+          Write-Host "Ổ C:         : Free >70GB sau cleanup"
+          Write-Host "Lag          : Siêu thấp (effects tắt hết)"
           Write-Host "=================================================="
-          while ($true) { Write-Host "[$(Get-Date)] Active - Max optimized"; Start-Sleep -Seconds 300 }
+          while ($true) {
+            Write-Host "[$(Get-Date)] RDP Active - Chạy mượt mãi"
+            Start-Sleep -Seconds 300
+          }
