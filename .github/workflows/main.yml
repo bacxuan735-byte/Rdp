@@ -56,15 +56,24 @@ jobs:
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
-      - name: Get Tailscale IP
+      - name: Get Tailscale IP (with retry nếu cần)
         run: |
-          $tsIP = tailscale ip -4
+          $retry = 0
+          $tsIP = $null
+          while ($retry -lt 20 -and -not $tsIP) {
+              $tsIP = tailscale ip -4
+              if ($tsIP) {
+                  echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+                  Write-Host "Tailscale IP: $tsIP"
+              } else {
+                  Start-Sleep -Seconds 10
+                  $retry++
+              }
+          }
           if (-not $tsIP) {
               Write-Error "Failed to get Tailscale IP"
               exit 1
           }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
 
       - name: Verify RDP Accessibility
         run: |
@@ -75,11 +84,35 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
+      - name: Set Greenboy Wallpaper (hình xanh cũ đẹp)
+        run: |
+          # Link hình cánh đồng xanh lá mây trời giống cái cũ bạn thích
+          $url = "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
+          $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-old.jpg"
+          
+          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath
+          
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
+          
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public class Wallpaper {
+              [DllImport("user32.dll", CharSet = CharSet.Auto)]
+              public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+          }
+"@ 
+          [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
+          
+          Write-Host "Wallpaper xanh cũ chill đã set đẹp lung linh! 💚☁️"
+
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
+          Write-Host "Wallpaper: Hình xanh cũ siêu đẹp"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "========================================`n"
