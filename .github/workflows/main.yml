@@ -54,9 +54,7 @@ jobs:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:rdp-runner  # Phải khớp với tag bạn assign khi tạo OAuth client
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
 
       - name: Get Tailscale IP
         run: |
@@ -83,7 +81,7 @@ jobs:
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
-          Write-Host "Connect via Tailscale RDP client"
+          Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "========================================`n"
           
           while ($true) {
