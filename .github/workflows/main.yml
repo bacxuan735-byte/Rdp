@@ -55,23 +55,24 @@ jobs:
         uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          args: --force-reauth --reset --accept-risk=lose-ssh --accept-dns=false --operator=$env:USERNAME
+          statedir: /tmp/tailscale-state  # Fix bug state cũ trên runner mới
 
-      - name: Get Tailscale IP
+      - name: Get Tailscale IP (with long retry)
         run: |
           $retry = 0
-          while ($retry -lt 20) {
+          $tsIP = $null
+          while ($retry -lt 40 -and -not $tsIP) {  # Retry lâu hơn để chờ bug NeedsLogin pass
               $tsIP = tailscale ip -4
               if ($tsIP) {
                   echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
                   Write-Host "Tailscale IP: $tsIP"
-                  break
+              } else {
+                  Start-Sleep -Seconds 15
+                  $retry++
               }
-              $retry++
-              Start-Sleep -Seconds 10
           }
           if (-not $tsIP) {
-              Write-Error "Failed to get Tailscale IP after retries"
+              Write-Error "Failed to get Tailscale IP after long retries"
               exit 1
           }
 
