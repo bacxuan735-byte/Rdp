@@ -54,16 +54,9 @@ jobs:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-          args: --force-reauth --reset --accept-risk=lose-ssh --accept-dns=false
-
-      - name: Debug Tailscale if fail
-        if: failure()
-        run: |
-          tailscale status
-          tailscale version
-          Get-Service Tailscale
-          tailscale debug logs
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:greenboy-runner  # Phải khớp chính xác tag bạn chọn khi tạo OAuth client
 
       - name: Get Tailscale IP
         run: |
@@ -88,10 +81,9 @@ jobs:
         run: |
           $wallpapers = @(
               "https://w0.peakpx.com/wallpaper/246/703/HD-wallpaper-landscape-hills-grass-trees-sky-clouds-green-path-nature-field.jpg"
-              "https://w0.peakpx.com/wallpaper/238/91/HD-wallpaper-beautiful-field-architecture-house-grass-sunny-beautiful-clouds-splendor-green-wildflowers-path-flowers-beauty-hill-top-blue-hills-quiet-lovely-colors-spring-church-sky-trees.jpg"
-              "https://w0.peakpx.com/wallpaper/672/569/HD-wallpaper-green-field-sun-grass-bold-sky-clouds-tree-leaves-daylight-green-bright-day-nature-field-blue.jpg"
               "https://images.unsplash.com/photo-1502082553048-f009136a2cae?q=80&w=1920"
               "https://images.unsplash.com/photo-1497436072909-60f3e9e2c24e?q=80&w=1920"
+              "https://w0.peakpx.com/wallpaper/672/569/HD-wallpaper-green-field-sun-grass-bold-sky-clouds-tree-leaves-daylight-green-bright-day-nature-field-blue.jpg"
           )
           $url = Get-Random -InputObject $wallpapers
           $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-wallpaper.jpg"
@@ -111,14 +103,14 @@ jobs:
 "@ 
           [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
           
-          Write-Host "Wallpaper xanh mướt đã set cho Greenboy Cloud PC! 💚☁️"
+          Write-Host "Wallpaper xanh mướt đã set tự động! 💚☁️"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== GREENBOY CLOUD PC READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Wallpaper: Xanh aesthetic tự động"
+          Write-Host "Wallpaper: Xanh aesthetic ngẫu nhiên"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free"
           Write-Host "Connect RDP qua Tailscale ngay! 🚀"
           Write-Host "========================================`n"
