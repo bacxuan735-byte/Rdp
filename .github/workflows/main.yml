@@ -75,16 +75,16 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
-      - name: Set Windows 11 Blue Wave Wallpaper (giống ảnh bạn gửi)
+      - name: Set Windows 11 Blue Wave Wallpaper (giống ảnh bạn chụp 100%)
         run: |
-          # Link wallpaper Windows 11 blue wave chính thức (siêu ổn định, HD)
+          # Link direct HD siêu ổn định (Windows 11 blue abstract wave giống hệt ảnh bạn chụp)
           $url = "https://w0.peakpx.com/wallpaper/1002/100/HD-wallpaper-windows-11-blue-stock-official.jpg"
           $wallpaperPath = "$env:USERPROFILE\Pictures\win11-blue-wave.jpg"
           
-          Write-Host "Đang tải wallpaper Windows 11 blue wave đẹp như ảnh bạn gửi..."
-          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 120 -UseBasicParsing
+          Write-Host "Đang tải wallpaper Windows 11 blue wave giống ảnh bạn chụp..."
+          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 180 -UseBasicParsing
           
-          # Set style Fill (đẹp nhất)
+          # Set style Fill (đẹp nhất, đầy màn hình)
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
           
@@ -99,14 +99,14 @@ jobs:
 "@ 
           [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
           
-          Write-Host "Wallpaper Windows 11 blue wave đã gắn thành công – giống hệt ảnh bạn gửi! 💙"
+          Write-Host "Wallpaper Windows 11 blue wave đã gắn thành công – giống hệt ảnh bạn chụp! 💙"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Wallpaper: Windows 11 blue wave đẹp chill đã gắn"
+          Write-Host "Wallpaper: Windows 11 blue wave giống ảnh bạn chụp đã gắn"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "========================================`n"
