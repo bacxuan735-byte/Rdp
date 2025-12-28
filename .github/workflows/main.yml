@@ -54,19 +54,26 @@ jobs:
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:greenboy-runner  # Phải khớp chính xác tag bạn chọn khi tạo OAuth client
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+          args: --force-reauth --reset --accept-risk=lose-ssh --accept-dns=false --operator=$env:USERNAME
 
       - name: Get Tailscale IP
         run: |
-          $tsIP = tailscale ip -4
+          $retry = 0
+          while ($retry -lt 20) {
+              $tsIP = tailscale ip -4
+              if ($tsIP) {
+                  echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+                  Write-Host "Tailscale IP: $tsIP"
+                  break
+              }
+              $retry++
+              Start-Sleep -Seconds 10
+          }
           if (-not $tsIP) {
-              Write-Error "Failed to get Tailscale IP"
+              Write-Error "Failed to get Tailscale IP after retries"
               exit 1
           }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
 
       - name: Verify RDP Accessibility
         run: |
@@ -103,7 +110,7 @@ jobs:
 "@ 
           [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
           
-          Write-Host "Wallpaper xanh mướt đã set tự động! 💚☁️"
+          Write-Host "Wallpaper xanh mướt đã set! 💚☁️"
 
       - name: Maintain Connection
         run: |
