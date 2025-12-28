@@ -75,40 +75,34 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
-      - name: Set Windows 11 Blue Wave Wallpaper (giống ảnh bạn chụp 100%)
+      - name: Install Applications like Your Screenshot
         run: |
-          # Link direct HD siêu ổn định (Windows 11 blue abstract wave giống hệt ảnh bạn chụp)
-          $url = "https://w0.peakpx.com/wallpaper/1002/100/HD-wallpaper-windows-11-blue-stock-official.jpg"
-          $wallpaperPath = "$env:USERPROFILE\Pictures\win11-blue-wave.jpg"
-          
-          Write-Host "Đang tải wallpaper Windows 11 blue wave giống ảnh bạn chụp..."
-          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 180 -UseBasicParsing
-          
-          # Set style Fill (đẹp nhất, đầy màn hình)
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
-          
-          # Áp dụng hình nền
-          Add-Type -TypeDefinition @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Wallpaper {
-              [DllImport("user32.dll", CharSet = CharSet.Auto)]
-              public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
-          }
-"@ 
-          [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
-          
-          Write-Host "Wallpaper Windows 11 blue wave đã gắn thành công – giống hệt ảnh bạn chụp! 💙"
+          Write-Host "Đang gắn mấy ứng dụng giống ảnh bạn chụp..."
+
+          # Brave Browser
+          Invoke-WebRequest -Uri "https://laptop-updates.brave.com/latest/winx64" -OutFile "$env:TEMP\BraveSetup.exe"
+          Start-Process -FilePath "$env:TEMP\BraveSetup.exe" -ArgumentList "/silent", "/install" -Wait
+
+          # Avast Free Antivirus
+          Invoke-WebRequest -Uri "https://bits.avast.com/files/installers/avast_free_antivirus_setup_online.exe" -OutFile "$env:TEMP\avast.exe"
+          Start-Process -FilePath "$env:TEMP\avast.exe" -ArgumentList "/silent" -Wait
+
+          # Tạo folder trên desktop giống ảnh
+          $desktop = [Environment]::GetFolderPath("Desktop")
+          New-Item -Path "$desktop\Games" -ItemType Directory -Force
+          New-Item -Path "$desktop\Optional" -ItemType Directory -Force
+
+          Write-Host "Gắn xong Brave, Avast, folder Games & Optional – giống hệt ảnh bạn chụp! 💙"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Wallpaper: Windows 11 blue wave giống ảnh bạn chụp đã gắn"
+          Write-Host "Ứng dụng đã gắn: Brave, Avast, folder Games & Optional"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
+          Write-Host "Hình nền bạn tự chỉnh thủ công nhé!"
           Write-Host "========================================`n"
           
           while ($true) {
