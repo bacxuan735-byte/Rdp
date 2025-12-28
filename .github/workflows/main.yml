@@ -75,9 +75,9 @@ jobs:
           }
           Write-Host "RDP connectivity OK!"
 
-      - name: Set Greenboy Wallpaper (fix lỗi tải hình)
+      - name: Set Greenboy Wallpaper (fix lỗi tải hình triệt để)
         run: |
-          # Nhiều link backup (xanh lá mây trời chill giống ảnh bạn gửi)
+          # 3 link backup xanh chill giống ảnh bạn gửi (HD ổn định)
           $urls = @(
               "https://w0.peakpx.com/wallpaper/246/703/HD-wallpaper-landscape-hills-grass-trees-sky-clouds-green-path-nature-field.jpg"
               "https://images.unsplash.com/photo-1502082553048-f009136a2cae?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=1920"
@@ -89,12 +89,12 @@ jobs:
           
           foreach ($url in $urls) {
               try {
-                  Write-Host "Đang tải hình từ: $url"
-                  Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
+                  Write-Host "Đang tải từ link: $url"
+                  Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 90 -UseBasicParsing -ErrorAction Stop
                   $success = $true
                   break
               } catch {
-                  Write-Host "Link lỗi, thử link khác..."
+                  Write-Host "Link này lỗi, thử link khác..."
               }
           }
           
@@ -114,7 +114,7 @@ jobs:
               
               Write-Host "Hình nền xanh chill đã gắn thành công! 💚☁️"
           } else {
-              Write-Host "Không tải được hình nào, bỏ qua (vẫn RDP bình thường)"
+              Write-Host "Không tải được hình (mạng runner chậm), bỏ qua - RDP vẫn chạy ngon"
           }
 
       - name: Maintain Connection
