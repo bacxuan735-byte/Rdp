@@ -19,15 +19,11 @@ jobs:
 
       - name: Configure Core RDP Settings
         run: |
-          # Enable Remote Desktop and disable NLA for easier connection
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
           Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
 
-          # Remove old rule if exists
           netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          
-          # Allow RDP on port 3389 (only reachable via Tailscale anyway)
           netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
 
           Restart-Service -Name TermService -Force
@@ -49,7 +45,7 @@ jobs:
           $password = -join ($rawPassword | Sort-Object { Get-Random })
           $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires:$true
           Add-LocalGroupMember -Group "Administrators" -Member "RDP"
           Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
           
@@ -60,7 +56,7 @@ jobs:
         with:
           oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
           oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:rdp-runner  # Thay bằng tag bạn đã tạo ở bước chuẩn bị
+          tags: tag:rdp-runner  # Phải khớp với tag bạn assign khi tạo OAuth client
 
       - name: Get Tailscale IP
         run: |
@@ -76,23 +72,20 @@ jobs:
         run: |
           $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
           if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "RDP port 3389 not reachable on Tailscale IP"
+              Write-Error "RDP port 3389 not reachable"
               exit 1
           }
-          Write-Host "RDP connectivity verified!"
+          Write-Host "RDP connectivity OK!"
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "Username: RDP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Specs: 4 vCPU | 16GB RAM | ~600GB SSD"
-          Write-Host "OS: Windows Server 2022 (compatible with Windows 11 features)"
-          Write-Host "Connect via Tailscale network using any RDP client"
+          Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
+          Write-Host "Connect via Tailscale RDP client"
           Write-Host "========================================`n"
           
-          # Keep alive until manually cancelled
           while ($true) {
               Write-Host "[$(Get-Date)] Runner active - Cancel workflow to stop"
               Start-Sleep -Seconds 300
