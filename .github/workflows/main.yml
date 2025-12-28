@@ -1,83 +1,40 @@
-name: RDP-Larger-Runner
-
-on:
-  workflow_dispatch:
-
-jobs:
-  secure-rdp:
-    runs-on: windows-latest
-    timeout-minutes: 360
-
-    steps:
-      - name: Display System Information
+      - name: Lấy Tailscale IP (có retry thông minh)
+        id: get_ip
         run: |
-          Write-Host "=== SYSTEM INFORMATION ==="
-          Get-ComputerInfo | Select-Object CsName, CsNumberOfProcessors, CsNumberOfLogicalProcessors, CsTotalPhysicalMemory, OsArchitecture
-          Write-Host "`nDisk Space:"
-          Get-PSDrive C | Select-Object Name, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Total(GB)";E={[math]::Round(($_.Used+$_.Free)/1GB,2)}}
-          Write-Host "==========================`n"
+          Write-Host "Đang chờ Tailscale khởi động hoàn tất..."
+          Start-Sleep -Seconds 20
 
-      - name: Configure Core RDP Settings
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+          $maxRetries = 25
+          $retryDelay = 12
+          $attempt = 1
+          $ip = $null
 
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User with Secure Password
-        run: |
-          Add-Type -AssemblyName System.Security
-          $charSet = @{
-              Upper   = [char[]](65..90)
-              Lower   = [char[]](97..122)
-              Number  = [char[]](48..57)
-              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
+          while ($attempt -le $maxRetries -and -not $ip) {
+              $ip = tailscale ip -4 2>$null
+              if ($ip) {
+                  Write-Host "Thành công: Đã lấy được Tailscale IP -> $ip"
+                  break
+              }
+              Write-Host "Lần thử $attempt/$maxRetries: Chưa có IP, chờ $retryDelay giây..."
+              Start-Sleep -Seconds $retryDelay
+              $attempt++
           }
-          $rawPassword = @()
-          $rawPassword += $charSet.Upper | Get-Random -Count 4
-          $rawPassword += $charSet.Lower | Get-Random -Count 4
-          $rawPassword += $charSet.Number | Get-Random -Count 4
-          $rawPassword += $charSet.Special | Get-Random -Count 4
-          $password = -join ($rawPassword | Sort-Object { Get-Random })
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
-          
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires:$true
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          
-          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
 
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-
-      - name: Wait and Get Tailscale IP
-        run: |
-          Write-Host "Waiting 60 seconds for Tailscale to stabilize (Windows 2025 bug fix)..."
-          Start-Sleep -Seconds 60
-          $tsIP = tailscale ip -4
-          if (-not $tsIP) {
-              Write-Host "IP not available yet (common bug), continuing anyway..."
-              $tsIP = "Check tailscale status after RDP connect"
+          if (-not $ip) {
+              Write-Host "::warning::Không lấy được Tailscale IP sau $maxRetries lần thử (bug thường gặp trên Windows runner)."
+              Write-Host "::warning::Bạn vẫn có thể connect RDP bình thường và chạy lệnh 'tailscale ip' bên trong máy."
+              $ip = "Chưa lấy được (chạy 'tailscale ip' sau khi RDP vào)"
           }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
 
-      - name: Verify RDP Accessibility
-        run: |
-          Write-Host "Skipping strict verification to avoid failure due to slow IP"
-          Write-Host "RDP is ready - connect and enjoy!"
+          echo "TAILSCALE_IP=$ip" >> $env:GITHUB_ENV
+          echo "ip=$ip" >> $env:GITHUB_OUTPUT
 
-      - name: Set Greenboy Wallpaper
+      - name: Đặt Wallpaper Greenboy
         run: |
           $url = "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
           $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-wallpaper.jpg"
           
+          Write-Host "Đang tải wallpaper xanh chill cổ điển..."
           Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 300
           
           Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
@@ -93,20 +50,29 @@ jobs:
 "@ 
           [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
           
-          Write-Host "Beautiful green chill wallpaper has been set! 💚☁️"
+          Write-Host "Wallpaper xanh chill cổ điển đã được đặt thành công! 💚☁️"
 
-      - name: Maintain Connection
+      - name: Thông Tin Kết Nối Cuối Cùng
         run: |
-          Write-Host "`n=== RDP ACCESS READY ==="
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "$env:RDP_CREDS"
-          Write-Host "Wallpaper: Classic green field set"
-          Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
-          Write-Host "Connect using any RDP client via Tailscale"
-          Write-Host "If IP is slow, wait 1-2 minutes after connecting"
-          Write-Host "========================================`n"
-          
+          $ip = "${{ steps.get_ip.outputs.ip }}"
+
+          Write-Host ""
+          Write-Host "========================================="
+          Write-Host "       GREENBOY CLOUD PC SẴN SÀNG"
+          Write-Host "========================================="
+          Write-Host "Tailscale IP : $ip"
+          Write-Host "${{ env.RDP_CREDS }}"
+          Write-Host "Wallpaper    : Hình đồng cỏ xanh cổ điển đã đặt"
+          Write-Host "Cấu hình     : 4 vCPU | 16 GB RAM | ~150 GB ổ trống"
+          Write-Host "Kết nối      : Dùng bất kỳ RDP client nào qua Tailscale"
+          if ($ip -like "*Chưa lấy được*") {
+              Write-Host "Lưu ý        : Phát hiện IP bị chậm (bug phổ biến)."
+              Write-Host "              Vẫn connect RDP bình thường → mở CMD → gõ 'tailscale ip'"
+          }
+          Write-Host "========================================="
+          Write-Host ""
+
           while ($true) {
-              Write-Host "[$(Get-Date)] Runner active - Cancel workflow to stop"
+              Write-Host "[$(Get-Date)] Runner đang chạy - Cancel workflow để tắt"
               Start-Sleep -Seconds 300
           }
