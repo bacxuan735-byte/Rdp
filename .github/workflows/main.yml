@@ -9,37 +9,119 @@ jobs:
     timeout-minutes: 360
 
     steps:
-      # ... (các step cũ của bạn giữ nguyên: Display, Configure RDP, Create User, Connect Tailscale, Get IP, Verify)
-
-      - name: Set Greenboy Wallpaper
+      - name: Display System Information
         run: |
-          $url = "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
-          $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-chill.jpg"
-          
-          Write-Host "Đang tải hình nền xanh chill..."
-          Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 300
-          
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
-          
-          Add-Type -TypeDefinition @"
-          using System;
-          using System.Runtime.InteropServices;
-          public class Wallpaper {
-              [DllImport("user32.dll", CharSet = CharSet.Auto)]
-              public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+          Write-Host "=== SYSTEM INFORMATION ==="
+          Get-ComputerInfo | Select-Object CsName, CsNumberOfProcessors, CsNumberOfLogicalProcessors, CsTotalPhysicalMemory, OsArchitecture
+          Write-Host "`nDisk Space:"
+          Get-PSDrive C | Select-Object Name, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Total(GB)";E={[math]::Round(($_.Used+$_.Free)/1GB,2)}}
+          Write-Host "==========================`n"
+
+      - name: Configure Core RDP Settings
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
+
+          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
+          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
+
+          Restart-Service -Name TermService -Force
+
+      - name: Create RDP User with Secure Password
+        run: |
+          Add-Type -AssemblyName System.Security
+          $charSet = @{
+              Upper   = [char[]](65..90)
+              Lower   = [char[]](97..122)
+              Number  = [char[]](48..57)
+              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
           }
-"@ 
-          [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
+          $rawPassword = @()
+          $rawPassword += $charSet.Upper | Get-Random -Count 4
+          $rawPassword += $charSet.Lower | Get-Random -Count 4
+          $rawPassword += $charSet.Number | Get-Random -Count 4
+          $rawPassword += $charSet.Special | Get-Random -Count 4
+          $password = -join ($rawPassword | Sort-Object { Get-Random })
+          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
           
-          Write-Host "Hình nền xanh chill đã gắn thành công! 💚☁️"
+          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires:$true
+          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
+          
+          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
+
+      - name: Get Tailscale IP
+        run: |
+          $tsIP = tailscale ip -4
+          if (-not $tsIP) {
+              Write-Error "Failed to get Tailscale IP"
+              exit 1
+          }
+          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
+          Write-Host "Tailscale IP: $tsIP"
+
+      - name: Verify RDP Accessibility
+        run: |
+          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
+          if (-not $testResult.TcpTestSucceeded) {
+              Write-Error "RDP port 3389 not reachable"
+              exit 1
+          }
+          Write-Host "RDP connectivity OK!"
+
+      - name: Set Greenboy Wallpaper (fix lỗi tải hình)
+        run: |
+          # Nhiều link backup (xanh lá mây trời chill giống ảnh bạn gửi)
+          $urls = @(
+              "https://w0.peakpx.com/wallpaper/246/703/HD-wallpaper-landscape-hills-grass-trees-sky-clouds-green-path-nature-field.jpg"
+              "https://images.unsplash.com/photo-1502082553048-f009136a2cae?ixlib=rb-4.0.3&q=85&fm=jpg&crop=entropy&cs=srgb&w=1920"
+              "https://img.pconline.com.cn/images/upload/upc/tx/wallpaper/1305/16/c2/21234567_1368776789333.jpg"
+          )
+          
+          $wallpaperPath = "$env:USERPROFILE\Pictures\greenboy-chill.jpg"
+          $success = $false
+          
+          foreach ($url in $urls) {
+              try {
+                  Write-Host "Đang tải hình từ: $url"
+                  Invoke-WebRequest -Uri $url -OutFile $wallpaperPath -TimeoutSec 60 -UseBasicParsing -ErrorAction Stop
+                  $success = $true
+                  break
+              } catch {
+                  Write-Host "Link lỗi, thử link khác..."
+              }
+          }
+          
+          if ($success) {
+              Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name WallpaperStyle -Value 10
+              Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name TileWallpaper -Value 0
+              
+              Add-Type -TypeDefinition @"
+              using System;
+              using System.Runtime.InteropServices;
+              public class Wallpaper {
+                  [DllImport("user32.dll", CharSet = CharSet.Auto)]
+                  public static extern int SystemParametersInfo(int uAction, int uParam, string lpvParam, int fuWinIni);
+              }
+"@ 
+              [Wallpaper]::SystemParametersInfo(20, 0, $wallpaperPath, 3)
+              
+              Write-Host "Hình nền xanh chill đã gắn thành công! 💚☁️"
+          } else {
+              Write-Host "Không tải được hình nào, bỏ qua (vẫn RDP bình thường)"
+          }
 
       - name: Maintain Connection
         run: |
           Write-Host "`n=== RDP ACCESS READY ==="
           Write-Host "Tailscale IP: $env:TAILSCALE_IP"
           Write-Host "$env:RDP_CREDS"
-          Write-Host "Wallpaper: Xanh chill cổ điển đã gắn"
           Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
           Write-Host "Connect via Tailscale network with RDP client"
           Write-Host "========================================`n"
