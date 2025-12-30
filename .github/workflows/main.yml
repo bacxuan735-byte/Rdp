@@ -1,90 +1,78 @@
-name: RDP-Larger-Runner
-
+name: Windows RDP - greenboyMC
 on:
   workflow_dispatch:
-
+concurrency:
+  group: vps-${{ github.repository }}
+  cancel-in-progress: true
 jobs:
-  secure-rdp:
+  build:
     runs-on: windows-latest
     timeout-minutes: 360
-
     steps:
-      - name: Display System Information
-        run: |
-          Write-Host "=== SYSTEM INFORMATION ==="
-          Get-ComputerInfo | Select-Object CsName, CsNumberOfProcessors, CsNumberOfLogicalProcessors, CsTotalPhysicalMemory, OsArchitecture
-          Write-Host "`nDisk Space:"
-          Get-PSDrive C | Select-Object Name, @{N="Used(GB)";E={[math]::Round($_.Used/1GB,2)}}, @{N="Free(GB)";E={[math]::Round($_.Free/1GB,2)}}, @{N="Total(GB)";E={[math]::Round(($_.Used+$_.Free)/1GB,2)}}
-          Write-Host "==========================`n"
-
-      - name: Configure Core RDP Settings
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "UserAuthentication" -Value 0 -Force
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "SecurityLayer" -Value 0 -Force
-
-          netsh advfirewall firewall delete rule name="RDP-Tailscale" | Out-Null
-          netsh advfirewall firewall add rule name="RDP-Tailscale" dir=in action=allow protocol=TCP localport=3389
-
-          Restart-Service -Name TermService -Force
-
-      - name: Create RDP User with Secure Password
-        run: |
-          Add-Type -AssemblyName System.Security
-          $charSet = @{
-              Upper   = [char[]](65..90)
-              Lower   = [char[]](97..122)
-              Number  = [char[]](48..57)
-              Special = ([char[]](33..47) + [char[]](58..64) + [char[]](91..96) + [char[]](123..126))
-          }
-          $rawPassword = @()
-          $rawPassword += $charSet.Upper | Get-Random -Count 4
-          $rawPassword += $charSet.Lower | Get-Random -Count 4
-          $rawPassword += $charSet.Number | Get-Random -Count 4
-          $rawPassword += $charSet.Special | Get-Random -Count 4
-          $password = -join ($rawPassword | Sort-Object { Get-Random })
-          $securePass = ConvertTo-SecureString $password -AsPlainText -Force
+    - uses: actions/checkout@v4
+    - name: Install Software
+      shell: cmd
+      run: choco install googlechrome 7zip -y --no-progress --ignore-checksums
+    - name: Set Password
+      shell: pwsh
+      run: |
+        # Đổi tên user thành greenboyMC
+        Rename-LocalUser -Name "runneradmin" -NewName "greenboyMC"
+        
+        # Đặt mật khẩu cho greenboyMC
+        $pw = ConvertTo-SecureString "greenboyMC@2025!" -AsPlainText -Force
+        Set-LocalUser -Name "greenboyMC" -Password $pw
+    - name: Enable RDP
+      shell: pwsh
+      run: |
+        Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+    - name: Setup Ngrok
+      shell: pwsh
+      run: |
+        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip -Force
+        
+        # Sử dụng Secret NGROK_AUTH_TOKEN (bắt buộc phải có)
+        .\ngrok\ngrok.exe config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
+        
+        # Sử dụng Secret NGROK_REGION (ví dụ: ap, us, eu, ...)
+        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp","--region","${{ secrets.NGROK_REGION }}","3389" -WindowStyle Hidden
+        
+        Write-Host "Waiting for Ngrok tunnel..."
+        $url = ""
+        for ($i = 0; $i -lt 30; $i++) {
+          try {
+            $t = Invoke-RestMethod http://localhost:4040/api/tunnels
+            if ($t.tunnels.Count -gt 0) { 
+              $url = $t.tunnels[0].public_url -replace 'tcp://','' 
+              break 
+            }
+          } catch {}
+          Start-Sleep 2
+        }
+        if ($url) {
+          "$url|greenboyMC@2025!" | Out-File info.txt -NoNewline
           
-          New-LocalUser -Name "RDP" -Password $securePass -AccountNeverExpires -PasswordNeverExpires:$true
-          Add-LocalGroupMember -Group "Administrators" -Member "RDP"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "RDP"
-          
-          echo "RDP_CREDS=User: RDP | Password: $password" >> $env:GITHUB_ENV
-
-      - name: Connect to Tailscale
-        uses: tailscale/github-action@v4
-        with:
-          authkey: ${{ secrets.TAILSCALE_AUTH_KEY }}
-
-      - name: Get Tailscale IP
-        run: |
-          $tsIP = tailscale ip -4
-          if (-not $tsIP) {
-              Write-Error "Failed to get Tailscale IP"
-              exit 1
-          }
-          echo "TAILSCALE_IP=$tsIP" >> $env:GITHUB_ENV
-          Write-Host "Tailscale IP: $tsIP"
-
-      - name: Verify RDP Accessibility
-        run: |
-          $testResult = Test-NetConnection -ComputerName $env:TAILSCALE_IP -Port 3389
-          if (-not $testResult.TcpTestSucceeded) {
-              Write-Error "RDP port 3389 not reachable"
-              exit 1
-          }
-          Write-Host "RDP connectivity OK!"
-
-      - name: Maintain Connection
-        run: |
-          Write-Host "`n=== RDP ACCESS READY ==="
-          Write-Host "Tailscale IP: $env:TAILSCALE_IP"
-          Write-Host "$env:RDP_CREDS"
-          Write-Host "Specs: 4 vCPU | 16GB RAM | ~150GB free disk"
-          Write-Host "Connect via Tailscale network with RDP client"
-          Write-Host "========================================`n"
-          
-          while ($true) {
-              Write-Host "[$(Get-Date)] Runner active - Cancel workflow to stop"
-              Start-Sleep -Seconds 300
-          }
+          Write-Host "==========================================" -ForegroundColor Green
+          Write-Host "THÔNG TIN KẾT NỐI RDP - greenboyMC:" -ForegroundColor Cyan
+          Write-Host "Host (Ngrok): $url" -ForegroundColor Yellow
+          Write-Host "Username: runneradmin (greenboyMC)" -ForegroundColor Yellow
+          Write-Host "Password: greenboyMC@2025!" -ForegroundColor Yellow
+          Write-Host "Port: 3389 (mặc định RDP)" -ForegroundColor Yellow
+          Write-Host "Thời gian hoạt động: 6 giờ" -ForegroundColor Yellow
+          Write-Host "==========================================" -ForegroundColor Green
+        }
+        else { 
+          Write-Host "LỖI: Không tìm thấy tunnel Ngrok!" -ForegroundColor Red
+          "ERROR|Ngrok tunnel not found" | Out-File info.txt -NoNewline 
+        }
+    - uses: actions/upload-artifact@v4
+      with:
+        name: result-greenboyMC
+        path: info.txt
+    - name: Keep Alive
+      shell: pwsh
+      run: |
+        Write-Host "RDP của greenboyMC đang chạy trong 360 phút (6 giờ)..."
+        Start-Sleep (360 * 60)
