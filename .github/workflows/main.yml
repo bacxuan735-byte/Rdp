@@ -21,7 +21,7 @@ jobs:
       - name: Auth ngrok
         env:
           NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
 
       - name: Setup RDP + Max Fast Intro + Reduce Lag
         run: |
@@ -62,7 +62,7 @@ jobs:
           Write-Host "=================================================="
           Write-Host "Đang khởi động tunnel ngrok... (ẩn cửa sổ)"
           
-          Start-Process -WindowStyle Hidden -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout"
+          Start-Process -WindowStyle Hidden -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout"
           
           Start-Sleep -Seconds 15
           
