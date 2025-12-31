@@ -1,32 +1,34 @@
-name: Windows RDP - greenboyMC
+name: Windows RDP
 on:
   workflow_dispatch:
 concurrency:
   group: vps-${{ github.repository }}
   cancel-in-progress: true
+
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
     - uses: actions/checkout@v4
+
     - name: Install Software
       shell: cmd
       run: choco install googlechrome 7zip -y --no-progress --ignore-checksums
+
     - name: Set Password
       shell: pwsh
       run: |
-        # Đổi tên user thành greenboyMC
-        Rename-LocalUser -Name "runneradmin" -NewName "greenboyMC"
-        
-        # Đặt mật khẩu cho greenboyMC
-        $pw = ConvertTo-SecureString "greenboyMC@2025!" -AsPlainText -Force
-        Set-LocalUser -Name "greenboyMC" -Password $pw
+        # Đặt mật khẩu cố định với ký tự đặc biệt !
+        $pw = ConvertTo-SecureString "vuducthangdepzaidayantacohihi!" -AsPlainText -Force
+        Set-LocalUser -Name "runneradmin" -Password $pw
+
     - name: Enable RDP
       shell: pwsh
       run: |
         Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+
     - name: Setup Ngrok
       shell: pwsh
       run: |
@@ -51,14 +53,15 @@ jobs:
           } catch {}
           Start-Sleep 2
         }
+
         if ($url) {
-          "$url|greenboyMC@2025!" | Out-File info.txt -NoNewline
+          "$url|vuducthangdepzaidayantacohihi!" | Out-File info.txt -NoNewline
           
           Write-Host "==========================================" -ForegroundColor Green
-          Write-Host "THÔNG TIN KẾT NỐI RDP - greenboyMC:" -ForegroundColor Cyan
+          Write-Host "THÔNG TIN KẾT NỐI RDP:" -ForegroundColor Cyan
           Write-Host "Host (Ngrok): $url" -ForegroundColor Yellow
-          Write-Host "Username: runneradmin (greenboyMC)" -ForegroundColor Yellow
-          Write-Host "Password: greenboyMC@2025!" -ForegroundColor Yellow
+          Write-Host "Username: runneradmin" -ForegroundColor Yellow
+          Write-Host "Password: vuducthangdepzaidayantacohihi!" -ForegroundColor Yellow
           Write-Host "Port: 3389 (mặc định RDP)" -ForegroundColor Yellow
           Write-Host "Thời gian hoạt động: 6 giờ" -ForegroundColor Yellow
           Write-Host "==========================================" -ForegroundColor Green
@@ -67,12 +70,14 @@ jobs:
           Write-Host "LỖI: Không tìm thấy tunnel Ngrok!" -ForegroundColor Red
           "ERROR|Ngrok tunnel not found" | Out-File info.txt -NoNewline 
         }
+
     - uses: actions/upload-artifact@v4
       with:
-        name: result-greenboyMC
+        name: result
         path: info.txt
+
     - name: Keep Alive
       shell: pwsh
       run: |
-        Write-Host "RDP của greenboyMC đang chạy trong 360 phút (6 giờ)..."
+        Write-Host "RDP đang chạy trong 360 phút (6 giờ)..."
         Start-Sleep (360 * 60)
