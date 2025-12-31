@@ -1,83 +1,80 @@
-name: Windows RDP
+name: RDP greenboyMC - Intro Flash
+
 on:
   workflow_dispatch:
-concurrency:
-  group: vps-${{ github.repository }}
-  cancel-in-progress: true
+    inputs:
+      ngrok_download_url:
+        description: 'Ngrok download link'
+        required: true
+        default: 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip'
 
 jobs:
   build:
     runs-on: windows-latest
     timeout-minutes: 360
     steps:
-    - uses: actions/checkout@v4
+      - name: Download ngrok
+        run: |
+          Invoke-WebRequest -Uri "${{ github.event.inputs.ngrok_download_url }}" -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Install Software
-      shell: cmd
-      run: choco install googlechrome 7zip -y --no-progress --ignore-checksums
+      - name: Auth ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: .\ngrok\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
 
-    - name: Set Password
-      shell: pwsh
-      run: |
-        # Đặt mật khẩu cố định với ký tự đặc biệt !
-        $pw = ConvertTo-SecureString "vuducthangdepzaidayantacohihi!" -AsPlainText -Force
-        Set-LocalUser -Name "runneradmin" -Password $pw
-
-    - name: Enable RDP
-      shell: pwsh
-      run: |
-        Set-ItemProperty 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-
-    - name: Setup Ngrok
-      shell: pwsh
-      run: |
-        Invoke-WebRequest https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
-        Expand-Archive ngrok.zip -Force
-        
-        # Sử dụng Secret NGROK_AUTH_TOKEN (bắt buộc phải có)
-        .\ngrok\ngrok.exe config add-authtoken "${{ secrets.NGROK_AUTH_TOKEN }}"
-        
-        # Sử dụng Secret NGROK_REGION (ví dụ: ap, us, eu, ...)
-        Start-Process .\ngrok\ngrok.exe -ArgumentList "tcp","--region","${{ secrets.NGROK_REGION }}","3389" -WindowStyle Hidden
-        
-        Write-Host "Waiting for Ngrok tunnel..."
-        $url = ""
-        for ($i = 0; $i -lt 30; $i++) {
-          try {
-            $t = Invoke-RestMethod http://localhost:4040/api/tunnels
-            if ($t.tunnels.Count -gt 0) { 
-              $url = $t.tunnels[0].public_url -replace 'tcp://','' 
-              break 
-            }
-          } catch {}
-          Start-Sleep 2
-        }
-
-        if ($url) {
-          "$url|vuducthangdepzaidayantacohihi!" | Out-File info.txt -NoNewline
+      - name: Setup RDP + Max Fast Intro + Reduce Lag
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+          New-LocalUser "greenboyMC" -Password (ConvertTo-SecureString -AsPlainText "W1nd0ws-P4ssw0rd-2025!" -Force) -FullName "greenboyMC"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "greenboyMC"
+          Add-LocalGroupMember -Group "Administrators" -Member "greenboyMC"
           
-          Write-Host "==========================================" -ForegroundColor Green
-          Write-Host "THÔNG TIN KẾT NỐI RDP:" -ForegroundColor Cyan
-          Write-Host "Host (Ngrok): $url" -ForegroundColor Yellow
-          Write-Host "Username: runneradmin" -ForegroundColor Yellow
-          Write-Host "Password: vuducthangdepzaidayantacohihi!" -ForegroundColor Yellow
-          Write-Host "Port: 3389 (mặc định RDP)" -ForegroundColor Yellow
-          Write-Host "Thời gian hoạt động: 6 giờ" -ForegroundColor Yellow
-          Write-Host "==========================================" -ForegroundColor Green
-        }
-        else { 
-          Write-Host "LỖI: Không tìm thấy tunnel Ngrok!" -ForegroundColor Red
-          "ERROR|Ngrok tunnel not found" | Out-File info.txt -NoNewline 
-        }
+          # Intro flash nhanh + tắt hiệu ứng
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name "MinAnimate" -Value "0"
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name "TaskbarAnimations" -Value 0
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name "EnableTransparency" -Value 0
+          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "DragFullWindows" -Value "0"
+          New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop' -Force | Out-Null
+          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop' -Name "NoChangingWallPaper" -Value 1
+          
+          # Tắt services nặng
+          @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack") | ForEach-Object {
+            Stop-Service -Name $_ -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $_ -StartupType Disabled -ErrorAction SilentlyContinue
+          }
+          
+          # Giảm lag RDP tối đa
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxCompressionLevel" -Value 2 -Type DWord
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "VideoQualityMode" -Value 2 -Type DWord
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fEnableDesktopComposition" -Value 0
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name "DWMFRAMEINTERVAL" -Value 10 -Type DWord
 
-    - uses: actions/upload-artifact@v4
-      with:
-        name: result
-        path: info.txt
-
-    - name: Keep Alive
-      shell: pwsh
-      run: |
-        Write-Host "RDP đang chạy trong 360 phút (6 giờ)..."
-        Start-Sleep (360 * 60)
+      - name: Start Ngrok Tunnel (Hidden) & Display RDP Info
+        run: |
+          Write-Host "=================================================="
+          Write-Host "RDP ĐÃ SẴN SÀNG - Intro flash nhanh + Lag giảm max"
+          Write-Host "Username: greenboyMC"
+          Write-Host "Password: W1nd0ws-P4ssw0rd-2025!"
+          Write-Host "=================================================="
+          Write-Host "Đang khởi động tunnel ngrok... (ẩn cửa sổ)"
+          
+          Start-Process -WindowStyle Hidden -FilePath ".\ngrok\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout"
+          
+          Start-Sleep -Seconds 15
+          
+          $tunnels = Invoke-RestMethod http://localhost:4040/api/tunnels
+          $tcpTunnel = ($tunnels.tunnels | Where-Object { $_.proto -eq "tcp" }).public_url
+          $hostPort = $tcpTunnel -replace "tcp://", ""
+          
+          Write-Host "=================================================="
+          Write-Host "ĐỊA CHỈ NGROK (DÙNG ĐỂ KẾT NỐI RDP):"
+          Write-Host $hostPort
+          Write-Host "Ví dụ: Host = $($hostPort.split(':')[0]) | Port = $($hostPort.split(':')[1])"
+          Write-Host "=================================================="
+          
+          Write-Host "Tunnel đang hoạt động... Job sẽ tự dừng sau 6 giờ."
+          Start-Sleep -Seconds 21420
