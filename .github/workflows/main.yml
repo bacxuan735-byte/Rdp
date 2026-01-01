@@ -1,4 +1,4 @@
-name: MacOS VNC Ngrok Fix Màn Hình Đen
+name: MacOS VNC Ngrok Fix Checkerboard Pattern
 
 on: [push, workflow_dispatch]
 
@@ -18,7 +18,7 @@ jobs:
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Create & Setup VNC User (fix black screen)
+    - name: Create & Setup VNC User
       run: |
         sudo dscl . -delete /Users/vncuser || echo "User not exist"
         sudo dscl . -create /Users/vncuser
@@ -32,7 +32,7 @@ jobs:
         sudo dscl . -passwd /Users/vncuser mac12345
         sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-    - name: Enable VNC & Auto Login (fix black screen)
+    - name: Enable VNC & Auto Login
       run: |
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -privs -all -users vncuser
         sudo defaults write /Library/Preferences/com.apple.VNCSettings LocalPassword "mac12345"
@@ -40,18 +40,17 @@ jobs:
         sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUserScreenLocked -bool false
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-    - name: Force Login Window (show desktop)
+    - name: Set Default Wallpaper (fix checkerboard transparent)
       run: |
-        sudo launchctl load /System/Library/LaunchDaemons/com.apple.loginwindow.plist
-        sleep 10  # chờ login xong
+        sudo -u vncuser osascript -e 'tell application "System Events" to tell every desktop to set picture to "/System/Library/Desktop Pictures/Sonoma.heic"'
 
     - name: Show Connect Info
       run: |
         echo "=================================="
-        echo "MACOS VNC FIX MÀN HÌNH ĐEN SẴN SÀNG!"
+        echo "MACOS VNC FIX CHECKERBOARD SẴN SÀNG!"
         echo "Username: vncuser (auto login)"
         echo "Password: mac12345 (nếu hỏi)"
-        echo "Connect VNC bằng RealVNC Viewer hoặc TigerVNC"
+        echo "Wallpaper: Sonoma default (đẹp lung linh)"
         echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
         echo "=================================="
 
