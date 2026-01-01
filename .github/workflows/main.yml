@@ -1,4 +1,4 @@
-name: MacOS VNC Ngrok
+name: MacOS VNC Ngrok Fix Connect
 
 on: [push, workflow_dispatch]
 
@@ -8,7 +8,10 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Download Ngrok
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Download & Extract Ngrok
       run: |
         curl -s https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
         unzip ngrok.zip
@@ -18,26 +21,37 @@ jobs:
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Enable VNC Server
+    - name: Create New VNC User (fix black screen)
       run: |
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users admin -privs -all -restart -agent
+        sudo dscl . -create /Users/vncuser
+        sudo dscl . -create /Users/vncuser UserShell /bin/bash
+        sudo dscl . -create /Users/vncuser RealName "VNC User"
+        sudo dscl . -create /Users/vncuser UniqueID 501
+        sudo dscl . -create /Users/vncuser PrimaryGroupID 20
+        sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
+        sudo cp -R /System/Library/User\ Template/English.lproj /Users/vncuser
+        sudo chown -R vncuser:staff /Users/vncuser
+        sudo dscl . -passwd /Users/vncuser mac12345
+        sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-    - name: Set VNC Password (dễ nhớ)
+    - name: Enable VNC Server & Set Password
       run: |
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -privs -all -users vncuser
         sudo defaults write /Library/Preferences/com.apple.VNCSettings LocalPassword "mac12345"
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
 
-    - name: Show Info Connect
+    - name: Show Connect Info
       run: |
         echo "=================================="
-        echo "MACOS VNC SẴN SÀNG!"
+        echo "MACOS VNC FIX CONNECT SẴN SÀNG!"
+        echo "Username: vncuser"
         echo "Password: mac12345"
         echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
-        echo "Connect bằng RealVNC Viewer hoặc TigerVNC"
-        echo "Address: host:port từ log ngrok"
+        echo "Connect VNC bằng host:port từ log"
+        echo "Dùng Remote Desktop Connection (Windows) hoặc Screen Sharing (Mac)"
         echo "=================================="
 
-    - name: Create Tunnel VNC Port 5900
+    - name: Create Ngrok Tunnel Port 5900
       run: ./ngrok tcp 5900 --log=stdout
 
     - name: Keep Alive
