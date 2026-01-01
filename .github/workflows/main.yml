@@ -1,4 +1,4 @@
-name: MacOS VNC Ngrok Fix Error AlreadyExists
+name: MacOS VNC Ngrok Fix Màn Hình Đen
 
 on: [push, workflow_dispatch]
 
@@ -18,12 +18,9 @@ jobs:
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Create New VNC User (fix AlreadyExists & black screen)
+    - name: Create & Setup VNC User (fix black screen)
       run: |
-        # Nếu user tồn tại thì delete trước
-        sudo dscl . -delete /Users/vncuser || echo "User not exist, continue"
-        
-        # Tạo user mới với UID cao hơn tránh trùng (1001)
+        sudo dscl . -delete /Users/vncuser || echo "User not exist"
         sudo dscl . -create /Users/vncuser
         sudo dscl . -create /Users/vncuser UserShell /bin/bash
         sudo dscl . -create /Users/vncuser RealName "VNC User"
@@ -35,21 +32,27 @@ jobs:
         sudo dscl . -passwd /Users/vncuser mac12345
         sudo dscl . -append /Groups/admin GroupMembership vncuser
 
-    - name: Enable VNC Server & Set Password
+    - name: Enable VNC & Auto Login (fix black screen)
       run: |
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -privs -all -users vncuser
         sudo defaults write /Library/Preferences/com.apple.VNCSettings LocalPassword "mac12345"
+        sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
+        sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUserScreenLocked -bool false
         sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+    - name: Force Login Window (show desktop)
+      run: |
+        sudo launchctl load /System/Library/LaunchDaemons/com.apple.loginwindow.plist
+        sleep 10  # chờ login xong
 
     - name: Show Connect Info
       run: |
         echo "=================================="
-        echo "MACOS VNC FIX LỖI ALREADYEXISTS SẴN SÀNG!"
-        echo "Username: vncuser"
-        echo "Password: mac12345"
+        echo "MACOS VNC FIX MÀN HÌNH ĐEN SẴN SÀNG!"
+        echo "Username: vncuser (auto login)"
+        echo "Password: mac12345 (nếu hỏi)"
+        echo "Connect VNC bằng RealVNC Viewer hoặc TigerVNC"
         echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
-        echo "Connect VNC bằng host:port từ log"
-        echo "Dùng Remote Desktop Connection (Windows) hoặc Screen Sharing (Mac)"
         echo "=================================="
 
     - name: Create Ngrok Tunnel Port 5900
