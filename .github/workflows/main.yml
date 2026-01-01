@@ -1,80 +1,44 @@
-name: RDP greenboyMC - Intro Flash
+name: MacOS VNC Ngrok
 
-on:
-  workflow_dispatch:
-    inputs:
-      ngrok_download_url:
-        description: 'Ngrok download link'
-        required: true
-        default: 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip'
+on: [push, workflow_dispatch]
 
 jobs:
-  build:
-    runs-on: windows-latest
+  macos-vnc:
+    runs-on: macos-latest
     timeout-minutes: 360
+
     steps:
-      - name: Download ngrok
-        run: |
-          Invoke-WebRequest -Uri "${{ github.event.inputs.ngrok_download_url }}" -OutFile ngrok.zip
-          Expand-Archive ngrok.zip -DestinationPath .
+    - name: Download Ngrok
+      run: |
+        curl -s https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
+        unzip ngrok.zip
 
-      - name: Auth ngrok
-        env:
-          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
+    - name: Auth Ngrok
+      run: ./ngrok authtoken $NGROK_AUTH_TOKEN
+      env:
+        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-      - name: Setup RDP + Max Fast Intro + Reduce Lag
-        run: |
-          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
-          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-          New-LocalUser "greenboyMC" -Password (ConvertTo-SecureString -AsPlainText "W1nd0ws-P4ssw0rd-2025!" -Force) -FullName "greenboyMC"
-          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "greenboyMC"
-          Add-LocalGroupMember -Group "Administrators" -Member "greenboyMC"
-          
-          # Intro flash nhanh + tắt hiệu ứng
-          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects' -Name "VisualFXSetting" -Value 2
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop\WindowMetrics' -Name "MinAnimate" -Value "0"
-          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name "TaskbarAnimations" -Value 0
-          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize' -Name "EnableTransparency" -Value 0
-          Set-ItemProperty -Path 'HKCU:\Control Panel\Desktop' -Name "DragFullWindows" -Value "0"
-          New-Item -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop' -Force | Out-Null
-          Set-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\ActiveDesktop' -Name "NoChangingWallPaper" -Value 1
-          
-          # Tắt services nặng
-          @("SysMain","WSearch","wuauserv","WinDefend","DiagTrack") | ForEach-Object {
-            Stop-Service -Name $_ -Force -ErrorAction SilentlyContinue
-            Set-Service -Name $_ -StartupType Disabled -ErrorAction SilentlyContinue
-          }
-          
-          # Giảm lag RDP tối đa
-          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxCompressionLevel" -Value 2 -Type DWord
-          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "VideoQualityMode" -Value 2 -Type DWord
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "fEnableDesktopComposition" -Value 0
-          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name "DWMFRAMEINTERVAL" -Value 10 -Type DWord
+    - name: Enable VNC Server
+      run: |
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -users admin -privs -all -restart -agent
 
-      - name: Start Ngrok Tunnel (Hidden) & Display RDP Info
-        run: |
-          Write-Host "=================================================="
-          Write-Host "RDP ĐÃ SẴN SÀNG - Intro flash nhanh + Lag giảm max"
-          Write-Host "Username: greenboyMC"
-          Write-Host "Password: W1nd0ws-P4ssw0rd-2025!"
-          Write-Host "=================================================="
-          Write-Host "Đang khởi động tunnel ngrok... (ẩn cửa sổ)"
-          
-          Start-Process -WindowStyle Hidden -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --log=stdout"
-          
-          Start-Sleep -Seconds 15
-          
-          $tunnels = Invoke-RestMethod http://localhost:4040/api/tunnels
-          $tcpTunnel = ($tunnels.tunnels | Where-Object { $_.proto -eq "tcp" }).public_url
-          $hostPort = $tcpTunnel -replace "tcp://", ""
-          
-          Write-Host "=================================================="
-          Write-Host "ĐỊA CHỈ NGROK (DÙNG ĐỂ KẾT NỐI RDP):"
-          Write-Host $hostPort
-          Write-Host "Ví dụ: Host = $($hostPort.split(':')[0]) | Port = $($hostPort.split(':')[1])"
-          Write-Host "=================================================="
-          
-          Write-Host "Tunnel đang hoạt động... Job sẽ tự dừng sau 6 giờ."
-          Start-Sleep -Seconds 21420
+    - name: Set VNC Password (dễ nhớ)
+      run: |
+        sudo defaults write /Library/Preferences/com.apple.VNCSettings LocalPassword "mac12345"
+        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+
+    - name: Show Info Connect
+      run: |
+        echo "=================================="
+        echo "MACOS VNC SẴN SÀNG!"
+        echo "Password: mac12345"
+        echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
+        echo "Connect bằng RealVNC Viewer hoặc TigerVNC"
+        echo "Address: host:port từ log ngrok"
+        echo "=================================="
+
+    - name: Create Tunnel VNC Port 5900
+      run: ./ngrok tcp 5900 --log=stdout
+
+    - name: Keep Alive
+      run: tail -f /dev/null
