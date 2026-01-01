@@ -1,4 +1,4 @@
-name: MacOS VNC Ngrok Fix Connect
+name: MacOS VNC Ngrok Fix Error AlreadyExists
 
 on: [push, workflow_dispatch]
 
@@ -8,9 +8,6 @@ jobs:
     timeout-minutes: 360
 
     steps:
-    - name: Checkout repo
-      uses: actions/checkout@v4
-
     - name: Download & Extract Ngrok
       run: |
         curl -s https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
@@ -21,12 +18,16 @@ jobs:
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
 
-    - name: Create New VNC User (fix black screen)
+    - name: Create New VNC User (fix AlreadyExists & black screen)
       run: |
+        # Nếu user tồn tại thì delete trước
+        sudo dscl . -delete /Users/vncuser || echo "User not exist, continue"
+        
+        # Tạo user mới với UID cao hơn tránh trùng (1001)
         sudo dscl . -create /Users/vncuser
         sudo dscl . -create /Users/vncuser UserShell /bin/bash
         sudo dscl . -create /Users/vncuser RealName "VNC User"
-        sudo dscl . -create /Users/vncuser UniqueID 501
+        sudo dscl . -create /Users/vncuser UniqueID 1001
         sudo dscl . -create /Users/vncuser PrimaryGroupID 20
         sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
         sudo cp -R /System/Library/User\ Template/English.lproj /Users/vncuser
@@ -43,7 +44,7 @@ jobs:
     - name: Show Connect Info
       run: |
         echo "=================================="
-        echo "MACOS VNC FIX CONNECT SẴN SÀNG!"
+        echo "MACOS VNC FIX LỖI ALREADYEXISTS SẴN SÀNG!"
         echo "Username: vncuser"
         echo "Password: mac12345"
         echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
