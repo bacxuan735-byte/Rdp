@@ -1,61 +1,75 @@
-name: MacOS VNC Ngrok Fix Checkerboard Pattern
+name: RDP greenboyMC - Intro The Flash (Ngrok Low Lag Asia)
 
-on: [push, workflow_dispatch]
+on:
+  workflow_dispatch:
 
 jobs:
-  macos-vnc:
-    runs-on: macos-latest
+  build:
+    runs-on: windows-latest
     timeout-minutes: 360
 
     steps:
-    - name: Download & Extract Ngrok
-      run: |
-        curl -s https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-amd64.zip -o ngrok.zip
-        unzip ngrok.zip
+      - name: Download & Extract Ngrok
+        run: |
+          Invoke-WebRequest -Uri "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip" -OutFile ngrok.zip
+          Expand-Archive ngrok.zip -DestinationPath .
 
-    - name: Auth Ngrok
-      run: ./ngrok authtoken $NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+      - name: Auth Ngrok
+        env:
+          NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+        run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
 
-    - name: Create & Setup VNC User
-      run: |
-        sudo dscl . -delete /Users/vncuser || echo "User not exist"
-        sudo dscl . -create /Users/vncuser
-        sudo dscl . -create /Users/vncuser UserShell /bin/bash
-        sudo dscl . -create /Users/vncuser RealName "VNC User"
-        sudo dscl . -create /Users/vncuser UniqueID 1001
-        sudo dscl . -create /Users/vncuser PrimaryGroupID 20
-        sudo dscl . -create /Users/vncuser NFSHomeDirectory /Users/vncuser
-        sudo cp -R /System/Library/User\ Template/English.lproj /Users/vncuser
-        sudo chown -R vncuser:staff /Users/vncuser
-        sudo dscl . -passwd /Users/vncuser mac12345
-        sudo dscl . -append /Groups/admin GroupMembership vncuser
+      - name: Setup RDP + Max Fast Intro + Lowest Lag Possible (Ngrok Asia)
+        run: |
+          Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -Name "fDenyTSConnections" -Value 0
+          Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
 
-    - name: Enable VNC & Auto Login
-      run: |
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -activate -configure -access -on -privs -all -users vncuser
-        sudo defaults write /Library/Preferences/com.apple.VNCSettings LocalPassword "mac12345"
-        sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUser vncuser
-        sudo defaults write /Library/Preferences/com.apple.loginwindow autoLoginUserScreenLocked -bool false
-        sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart -restart -agent
+          New-LocalUser "greenboyMC" -Password (ConvertTo-SecureString -AsPlainText "W1nd0ws-P4ssw0rd-2025!" -Force) -FullName "greenboyMC"
+          Add-LocalGroupMember -Group "Administrators" -Member "greenboyMC"
+          Add-LocalGroupMember -Group "Remote Desktop Users" -Member "greenboyMC"
 
-    - name: Set Default Wallpaper (fix checkerboard transparent)
-      run: |
-        sudo -u vncuser osascript -e 'tell application "System Events" to tell every desktop to set picture to "/System/Library/Desktop Pictures/Sonoma.heic"'
+          # Intro flash nhanh + tắt hết
+          reg add "HKCU\Control Panel\Desktop" /v UserPreferencesMask /t REG_BINARY /d 9012038010000000 /f
+          reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VisualEffects" /v VisualFXSetting /t REG_DWORD /d 3 /f
+          reg add "HKCU\Control Panel\Desktop\WindowMetrics" /v MinAnimate /t REG_SZ /d 0 /f
 
-    - name: Show Connect Info
-      run: |
-        echo "=================================="
-        echo "MACOS VNC FIX CHECKERBOARD SẴN SÀNG!"
-        echo "Username: vncuser (auto login)"
-        echo "Password: mac12345 (nếu hỏi)"
-        echo "Wallpaper: Sonoma default (đẹp lung linh)"
-        echo "Chờ ngrok hiện tcp://0.tcp.ngrok.io:xxxxx"
-        echo "=================================="
+          # Tắt service nặng
+          @("SysMain","WSearch","DiagTrack","wuauserv","bits") | ForEach-Object {
+            Stop-Service -Name $_ -Force -ErrorAction SilentlyContinue
+            Set-Service -Name $_ -StartupType Disabled -ErrorAction SilentlyContinue
+          }
 
-    - name: Create Ngrok Tunnel Port 5900
-      run: ./ngrok tcp 5900 --log=stdout
+          # RDP lowest lag possible
+          New-Item -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Force | Out-Null
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "MaxCompressionLevel" -Value 1 -Type DWord  # Compression thấp nhất
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "AVCHardwareEncodePreferred" -Value 1 -Type DWord
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "AVC444ModePreferred" -Value 1 -Type DWord
+          Set-ItemProperty -Path 'HKLM:\SOFTWARE\Policies\Microsoft\Windows NT\Terminal Services' -Name "fEnableRemoteFX" -Value 1 -Type DWord
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -Name "MaxFrameRate" -Value 30 -Type DWord  # 30 FPS để giảm bandwidth
+          Set-ItemProperty -Path 'HKLM:\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations' -Name "DWMFRAMEINTERVAL" -Value 15 -Type DWord
 
-    - name: Keep Alive
-      run: tail -f /dev/null
+      - name: Start Ngrok Tunnel Asia (ap - Singapore) & Info
+        run: |
+          Write-Host "=================================================="
+          Write-Host "RDP greenboyMC - Ngrok Asia (ap) Lag Giảm Max"
+          Write-Host "Username: greenboyMC"
+          Write-Host "Password: W1nd0ws-P4ssw0rd-2025!"
+          Write-Host "Region: Asia-Pacific (Singapore - gần VN nhất)"
+          Write-Host "=================================================="
+
+          # Tunnel region ap (Singapore)
+          Start-Process -WindowStyle Hidden -FilePath ".\ngrok.exe" -ArgumentList "tcp 3389 --region ap --log=stdout"
+
+          Start-Sleep -Seconds 20
+
+          try {
+            $tunnels = Invoke-RestMethod http://localhost:4040/api/tunnels
+            $tcpTunnel = ($tunnels.tunnels | Where-Object { $_.proto -eq "tcp" }).public_url
+            $hostPort = $tcpTunnel -replace "tcp://", ""
+            Write-Host "KẾT NỐI RDP:"
+            Write-Host "Host + Port: $hostPort"
+          } catch {
+            Write-Host "Chưa lấy tunnel, chờ thêm..."
+          }
+
+          Start-Sleep -Seconds 21300
